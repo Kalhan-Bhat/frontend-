@@ -17,8 +17,7 @@ function StudentPage() {
   const [channelName, setChannelName] = useState('')
   const [studentName, setStudentName] = useState('')
   
-  // Emotion/Engagement state
-  const [currentEmotion, setCurrentEmotion] = useState(null)
+  // Engagement state
   const [currentEngagement, setCurrentEngagement] = useState(null)
   const [confidence, setConfidence] = useState(0)
   
@@ -75,7 +74,7 @@ function StudentPage() {
     }
     
     await leave()
-    setCurrentEmotion(null)
+    setCurrentEngagement(null)
     setConfidence(0)
   }
 
@@ -178,18 +177,17 @@ function StudentPage() {
   }, [isJoined, localTracks.video, currentUid, channelName])
 
   /**
-   * Listen for emotion results from backend
+   * Listen for engagement results from backend
    */
   useEffect(() => {
-    const handleEmotionResult = (data) => {
-      console.log('🎭 Received emotion:', data)
-      setCurrentEmotion(data.emotion)
+    const handleEngagementResult = (data) => {
+      console.log('🎯 Received engagement:', data)
       setCurrentEngagement(data.engagement)
       setConfidence(data.confidence)
     }
 
-    const handleEmotionError = (data) => {
-      console.error('❌ Emotion error:', data)
+    const handleEngagementError = (data) => {
+      console.error('❌ Engagement error:', data)
     }
 
     // Listen for when students join
@@ -226,16 +224,16 @@ function StudentPage() {
       }
     }
 
-    on('emotion:result', handleEmotionResult)
-    on('emotion:error', handleEmotionError)
+    on('engagement:result', handleEngagementResult)
+    on('engagement:error', handleEngagementError)
     on('student:joined', handleStudentJoined)
     on('teacher:joined', handleTeacherJoined)
     on('student:left', handleUserLeft)
     on('teacher:left', handleUserLeft)
 
     return () => {
-      off('emotion:result', handleEmotionResult)
-      off('emotion:error', handleEmotionError)
+      off('engagement:result', handleEngagementResult)
+      off('engagement:error', handleEngagementError)
       off('student:joined', handleStudentJoined)
       off('teacher:joined', handleTeacherJoined)
       off('student:left', handleUserLeft)
@@ -339,8 +337,8 @@ function StudentPage() {
             </div>
           </div>
 
-          {/* Emotion Display */}
-          <EmotionDisplay emotion={currentEmotion} engagement={currentEngagement} confidence={confidence} />
+          {/* Engagement Display */}
+          <EmotionDisplay engagement={currentEngagement} confidence={confidence} />
         </>
       )}
     </div>

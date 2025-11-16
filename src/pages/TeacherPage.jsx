@@ -105,7 +105,6 @@ function TeacherPage() {
       const studentsList = (data.students || []).map(s => ({
         id: s.id,
         name: s.name,
-        emotion: s.emotion || null,
         engagement: s.engagement || null,
         confidence: s.confidence || null,
         timestamp: s.timestamp || Date.now()
@@ -149,7 +148,6 @@ function TeacherPage() {
           {
             id: data.studentId,
             name: data.studentName,
-            emotion: null,
             engagement: null,
             confidence: null,
             timestamp: data.timestamp
@@ -164,16 +162,15 @@ function TeacherPage() {
       setStudents((prev) => prev.filter((s) => s.id !== data.studentId))
     }
 
-    // Emotion update
-    const handleEmotionUpdate = (data) => {
-      console.log('🎭 Emotion update:', data)
+    // Engagement update
+    const handleEngagementUpdate = (data) => {
+      console.log('🎯 Engagement update:', data)
       setStudents((prev) =>
         prev.map((student) =>
           student.id === data.studentId
             ? {
                 ...student,
                 name: data.studentName || student.name,
-                emotion: data.emotion,
                 engagement: data.engagement,
                 confidence: data.confidence,
                 timestamp: data.timestamp
@@ -186,13 +183,13 @@ function TeacherPage() {
     on('students:list', handleStudentsList)
     on('student:joined', handleStudentJoined)
     on('student:left', handleStudentLeft)
-    on('emotion:update', handleEmotionUpdate)
+    on('engagement:update', handleEngagementUpdate)
 
     return () => {
       off('students:list', handleStudentsList)
       off('student:joined', handleStudentJoined)
       off('student:left', handleStudentLeft)
-      off('emotion:update', handleEmotionUpdate)
+      off('engagement:update', handleEngagementUpdate)
     }
   }, [on, off])
 
