@@ -8,7 +8,7 @@ import { useState, useEffect, useRef } from 'react'
 import AgoraRTC from 'agora-rtc-sdk-ng'
 import { getAgoraToken } from '../services/api'
 
-function ScreenShare({ channelName, isTeacher }) {
+function ScreenShare({ channelName,isTeacher }) {
   const [isSharing, setIsSharing] = useState(false)
   const [screenTrack, setScreenTrack] = useState(null)
   const [remoteScreenTrack, setRemoteScreenTrack] = useState(null)
@@ -16,21 +16,40 @@ function ScreenShare({ channelName, isTeacher }) {
   const screenPlayerRef = useRef(null)
   const screenClientRef = useRef(null)
 
-  // Initialize separate screen share client for receiving
+  // Initialize separate screen share client for receiving (students only)
   useEffect(() => {
-    if (!channelName) return
+    if (!channelName || isTeacher) return
+
+    let screenClient = null
+    let isJoining = false
 
     // Create a separate client just for screen share viewing
     const initScreenClient = async () => {
       try {
-        const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+        // Check if already has a client
+        if (screenClientRef.current) {
+          console.log('⚠️ Screen client already exists, skipping initialization')
+          return
+        }
+
+        if (isJoining) {
+          console.log('⚠️ Already joining screen channel, skipping')
+          return
+        }
+
+        isJoining = true
+        screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
         screenClientRef.current = screenClient
 
         const handleUserPublished = async (user, mediaType) => {
           if (mediaType === 'video') {
-            await screenClient.subscribe(user, mediaType)
-            console.log('📺 Screen share detected from:', user.uid)
-            setRemoteScreenTrack(user.videoTrack)
+            try {
+              await screenClient.subscribe(user, mediaType)
+              console.log('📺 Screen share detected from:', user.uid)
+              setRemoteScreenTrack(user.videoTrack)
+            } catch (err) {
+              console.error('❌ Error subscribing to screen share:', err)
+            }
           }
         }
 
@@ -49,20 +68,31 @@ function ScreenShare({ channelName, isTeacher }) {
         const { token, uid, appId } = await getAgoraToken(screenChannelName, 'student')
         await screenClient.join(appId, screenChannelName, token, uid)
         console.log('✅ Joined screen share channel:', screenChannelName)
+        isJoining = false
       } catch (err) {
         console.error('❌ Error initializing screen share client:', err)
+        isJoining = false
+        screenClientRef.current = null
       }
     }
 
     initScreenClient()
 
     return () => {
-      if (screenClientRef.current) {
-        screenClientRef.current.leave()
-        screenClientRef.current = null
+      const cleanup = async () => {
+        if (screenClientRef.current) {
+          try {
+            await screenClientRef.current.leave()
+            console.log('👋 Left screen share channel')
+          } catch (err) {
+            console.error('❌ Error leaving screen share channel:', err)
+          }
+          screenClientRef.current = null
+        }
       }
+      cleanup()
     }
-  }, [channelName])
+  }, [channelName, isTeacher])
 
   useEffect(() => {
     if (remoteScreenTrack && screenPlayerRef.current) {
@@ -79,6 +109,12 @@ function ScreenShare({ channelName, isTeacher }) {
   const startScreenShare = async () => {
     if (!isTeacher) {
       setError('Only teachers can share screen')
+      return
+    }
+
+    // Check if already sharing
+    if (isSharing || screenClientRef.current) {
+      console.log('⚠️ Already sharing or client exists')
       return
     }
 
@@ -118,6 +154,16 @@ function ScreenShare({ channelName, isTeacher }) {
       console.error('❌ Error starting screen share:', err)
       setError(err.message || 'Failed to start screen share')
       setIsSharing(false)
+      
+      // Cleanup on error
+      if (screenClientRef.current) {
+        try {
+          await screenClientRef.current.leave()
+        } catch (leaveErr) {
+          console.error('Error during cleanup:', leaveErr)
+        }
+        screenClientRef.current = null
+      }
     }
   }
 
@@ -128,8 +174,16 @@ function ScreenShare({ channelName, isTeacher }) {
         setScreenTrack(null)
       }
 
-      if (screenClientRef.current) {
-        await screenClientRef.current.leave()
+      if (screenClientRef.current && isTeacher) {
+        try {
+          // Unpublish first if still connected
+          if (screenClientRef.current.connectionState === 'CONNECTED') {
+            await screenClientRef.current.unpublish()
+          }
+          await screenClientRef.current.leave()
+        } catch (err) {
+          console.error('Error during client cleanup:', err)
+        }
         screenClientRef.current = null
       }
 
@@ -138,6 +192,9 @@ function ScreenShare({ channelName, isTeacher }) {
       console.log('🛑 Screen share stopped')
     } catch (err) {
       console.error('❌ Error stopping screen share:', err)
+      // Force cleanup
+      screenClientRef.current = null
+      setIsSharing(false)
     }
   }
 
