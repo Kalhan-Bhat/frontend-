@@ -349,7 +349,7 @@ function StudentPage() {
 
           {/* Screen Share - Students can view teacher's screen */}
           <div style={{ marginTop: '2rem' }}>
-            <ScreenShare client={client} channelName={channelName} isTeacher={false} />
+             <ScreenShare channelName={channelName} isTeacher={false} />
           </div>
         </>
       )}

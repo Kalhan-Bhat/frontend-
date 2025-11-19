@@ -353,7 +353,7 @@ function TeacherPage() {
             <Whiteboard socket={socket} channelName={channelName} isTeacher={true} />
             
             {/* Screen Share */}
-            <ScreenShare client={client} channelName={channelName} isTeacher={true} />
+             <ScreenShare channelName={channelName} isTeacher={true} />
           </div>
         </div>
       )}

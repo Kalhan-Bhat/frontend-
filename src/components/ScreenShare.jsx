@@ -1,48 +1,68 @@
 /**
  * Screen Share Component
  * Allows teacher to share their screen with students
+ * Uses a separate Agora client to avoid multiple video track conflicts
  */
 
 import { useState, useEffect, useRef } from 'react'
 import AgoraRTC from 'agora-rtc-sdk-ng'
+import { getAgoraToken } from '../services/api'
 
-function ScreenShare({ client, channelName, isTeacher }) {
+function ScreenShare({ channelName, isTeacher }) {
   const [isSharing, setIsSharing] = useState(false)
   const [screenTrack, setScreenTrack] = useState(null)
   const [remoteScreenTrack, setRemoteScreenTrack] = useState(null)
   const [error, setError] = useState(null)
   const screenPlayerRef = useRef(null)
+  const screenClientRef = useRef(null)
 
+  // Initialize separate screen share client for receiving
   useEffect(() => {
-    if (!client) return
+    if (!channelName) return
 
-    const handleUserPublished = async (user, mediaType) => {
-      if (mediaType === 'video' && user._videoTrack) {
-        // Check if this is a screen share track
-        const track = user._videoTrack
-        if (track._ID && track._ID.includes('screen')) {
-          await client.subscribe(user, mediaType)
-          console.log('📺 Screen share detected from:', user.uid)
-          setRemoteScreenTrack(track)
+    // Create a separate client just for screen share viewing
+    const initScreenClient = async () => {
+      try {
+        const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+        screenClientRef.current = screenClient
+
+        const handleUserPublished = async (user, mediaType) => {
+          if (mediaType === 'video') {
+            await screenClient.subscribe(user, mediaType)
+            console.log('📺 Screen share detected from:', user.uid)
+            setRemoteScreenTrack(user.videoTrack)
+          }
         }
+
+        const handleUserUnpublished = (user, mediaType) => {
+          if (mediaType === 'video') {
+            console.log('📺 Screen share stopped from:', user.uid)
+            setRemoteScreenTrack(null)
+          }
+        }
+
+        screenClient.on('user-published', handleUserPublished)
+        screenClient.on('user-unpublished', handleUserUnpublished)
+
+        // Join the screen share channel (separate from main video channel)
+        const screenChannelName = `${channelName}-screen`
+        const { token, uid, appId } = await getAgoraToken(screenChannelName, 'student')
+        await screenClient.join(appId, screenChannelName, token, uid)
+        console.log('✅ Joined screen share channel:', screenChannelName)
+      } catch (err) {
+        console.error('❌ Error initializing screen share client:', err)
       }
     }
 
-    const handleUserUnpublished = (user, mediaType) => {
-      if (mediaType === 'video') {
-        console.log('📺 Screen share stopped from:', user.uid)
-        setRemoteScreenTrack(null)
-      }
-    }
-
-    client.on('user-published', handleUserPublished)
-    client.on('user-unpublished', handleUserUnpublished)
+    initScreenClient()
 
     return () => {
-      client.off('user-published', handleUserPublished)
-      client.off('user-unpublished', handleUserUnpublished)
+      if (screenClientRef.current) {
+        screenClientRef.current.leave()
+        screenClientRef.current = null
+      }
     }
-  }, [client])
+  }, [channelName])
 
   useEffect(() => {
     if (remoteScreenTrack && screenPlayerRef.current) {
@@ -66,15 +86,25 @@ function ScreenShare({ client, channelName, isTeacher }) {
       setError(null)
       console.log('🖥️ Starting screen share...')
 
+      // Create a separate client for screen sharing
+      const screenClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+      
+      // Join a separate screen share channel
+      const screenChannelName = `${channelName}-screen`
+      const { token, uid, appId } = await getAgoraToken(screenChannelName, 'teacher')
+      await screenClient.join(appId, screenChannelName, token, uid)
+      console.log('✅ Joined screen share channel:', screenChannelName)
+
       // Create screen video track
       const track = await AgoraRTC.createScreenVideoTrack({
         encoderConfig: '1080p_1'
       }, 'disable') // Disable screen audio for now
 
       setScreenTrack(track)
+      screenClientRef.current = screenClient
 
-      // Publish screen track (without unpublishing camera)
-      await client.publish([track])
+      // Publish screen track in the separate channel
+      await screenClient.publish([track])
 
       setIsSharing(true)
       console.log('✅ Screen share started')
@@ -94,10 +124,13 @@ function ScreenShare({ client, channelName, isTeacher }) {
   const stopScreenShare = async () => {
     try {
       if (screenTrack) {
-        // Unpublish and close screen track
-        await client.unpublish([screenTrack])
         screenTrack.close()
         setScreenTrack(null)
+      }
+
+      if (screenClientRef.current) {
+        await screenClientRef.current.leave()
+        screenClientRef.current = null
       }
 
       setIsSharing(false)
