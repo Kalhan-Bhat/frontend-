@@ -342,14 +342,22 @@ function StudentPage() {
           {/* Engagement Display */}
           <EmotionDisplay engagement={currentEngagement} confidence={confidence} />
 
-          {/* Whiteboard - Students can view teacher's drawings */}
+          {/* Teaching Tools Section */}
           <div style={{ marginTop: '2rem' }}>
-            <Whiteboard socket={socket} channelName={channelName} isTeacher={false} />
-          </div>
+            <h2 className="section-title">📚 Learning Materials</h2>
+            
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+              gap: '2rem', 
+              marginTop: '1rem' 
+            }}>
+              {/* Whiteboard - Students can view teacher's drawings */}
+              <Whiteboard socket={socket} channelName={channelName} isTeacher={false} />
 
-          {/* Screen Share - Students can view teacher's screen */}
-          <div style={{ marginTop: '2rem' }}>
-             <ScreenShare channelName={channelName} isTeacher={false} />
+              {/* Screen Share - Students can view teacher's screen */}
+              <ScreenShare client={client} channelName={channelName} isTeacher={false} />
+            </div>
           </div>
         </>
       )}

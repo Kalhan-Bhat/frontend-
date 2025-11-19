@@ -7,6 +7,7 @@ import { useRef, useEffect, useState } from 'react'
 
 function Whiteboard({ socket, channelName, isTeacher }) {
   const canvasRef = useRef(null)
+  const containerRef = useRef(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [color, setColor] = useState('#000000')
   const [brushSize, setBrushSize] = useState(3)
@@ -14,17 +15,32 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    const container = containerRef.current
+    if (!canvas || !container) return
 
     const ctx = canvas.getContext('2d')
     
-    // Set canvas size
-    canvas.width = canvas.offsetWidth
-    canvas.height = canvas.offsetHeight
+    // Set canvas size to be responsive (use container width)
+    const resizeCanvas = () => {
+      const width = container.offsetWidth
+      const height = Math.min(window.innerHeight * 0.6, 500) // Responsive height
+      
+      // Save current canvas content
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      
+      canvas.width = width
+      canvas.height = height
+      
+      // Restore canvas content after resize
+      ctx.putImageData(imageData, 0, 0)
+      
+      // Reset context properties
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+    }
     
-    // Set initial context properties
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
 
     // Listen for drawing from others
     if (socket) {
@@ -42,6 +58,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     }
 
     return () => {
+      window.removeEventListener('resize', resizeCanvas)
       if (socket) {
         socket.off('whiteboard:draw')
         socket.off('whiteboard:clear')
@@ -59,14 +76,32 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     ctx.closePath()
   }
 
+  const getCoordinates = (e) => {
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    
+    // Handle both mouse and touch events
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    
+    // Calculate relative coordinates accounting for canvas scaling
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    
+    const x = (clientX - rect.left) * scaleX
+    const y = (clientY - rect.top) * scaleY
+    
+    return { x, y }
+  }
+
   const startDrawing = (e) => {
     if (!isTeacher) return // Only teacher can draw
     
+    e.preventDefault() // Prevent scrolling on touch devices
     setIsDrawing(true)
+    
     const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCoordinates(e)
     
     // Store last position
     canvas._lastX = x
@@ -76,11 +111,11 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   const draw = (e) => {
     if (!isDrawing || !isTeacher) return
 
+    e.preventDefault() // Prevent scrolling while drawing
+    
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCoordinates(e)
 
     // Draw locally
     drawLine(ctx, canvas._lastX, canvas._lastY, x, y, color, brushSize, tool)
@@ -125,23 +160,23 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: '8px', padding: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, flex: 1 }}>📝 Whiteboard</h3>
+    <div style={{ background: '#fff', borderRadius: '8px', padding: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', width: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, flex: '1 1 100%', marginBottom: '0.5rem' }}>📝 Whiteboard</h3>
         
         {isTeacher && (
           <>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.875rem' }}>Tool:</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => setTool('pen')}
                 style={{
-                  padding: '0.5rem 1rem',
+                  padding: '0.5rem 0.75rem',
                   background: tool === 'pen' ? '#3b82f6' : '#e5e7eb',
                   color: tool === 'pen' ? '#fff' : '#000',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
                 }}
               >
                 ✏️ Pen
@@ -149,79 +184,93 @@ function Whiteboard({ socket, channelName, isTeacher }) {
               <button
                 onClick={() => setTool('eraser')}
                 style={{
-                  padding: '0.5rem 1rem',
+                  padding: '0.5rem 0.75rem',
                   background: tool === 'eraser' ? '#3b82f6' : '#e5e7eb',
                   color: tool === 'eraser' ? '#fff' : '#000',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
                 }}
               >
                 🧹 Eraser
               </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.875rem' }}>Color:</label>
+              
               <input
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
+                title="Color"
                 style={{ width: '40px', height: '40px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
               />
-            </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  style={{ width: '80px' }}
+                />
+                <span style={{ fontSize: '0.75rem', minWidth: '35px' }}>{brushSize}px</span>
+              </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.875rem' }}>Size:</label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                style={{ width: '100px' }}
-              />
-              <span style={{ fontSize: '0.875rem', minWidth: '30px' }}>{brushSize}px</span>
+              <button
+                onClick={handleClear}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  background: '#ef4444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                🗑️ Clear
+              </button>
             </div>
-
-            <button
-              onClick={handleClear}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#ef4444',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              🗑️ Clear
-            </button>
           </>
         )}
         
         {!isTeacher && (
-          <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280', flex: '1 1 100%' }}>
             📖 View only - Teacher can draw
           </p>
         )}
       </div>
 
-      <canvas
-        ref={canvasRef}
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-        style={{
+      <div 
+        ref={containerRef}
+        style={{ 
           width: '100%',
-          height: '400px',
-          border: '2px solid #e5e7eb',
-          borderRadius: '4px',
-          cursor: isTeacher ? (tool === 'pen' ? 'crosshair' : 'cell') : 'default',
-          touchAction: 'none'
+          overflow: 'auto',
+          WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+          onTouchCancel={stopDrawing}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: 'auto',
+            border: '2px solid #e5e7eb',
+            borderRadius: '4px',
+            cursor: isTeacher ? (tool === 'pen' ? 'crosshair' : 'cell') : 'default',
+            touchAction: isTeacher ? 'none' : 'auto', // Enable touch drawing for teacher only
+            maxHeight: '500px'
+          }}
+        />
+      </div>
     </div>
   )
 }

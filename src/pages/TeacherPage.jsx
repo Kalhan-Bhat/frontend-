@@ -348,12 +348,17 @@ function TeacherPage() {
         <div style={{ marginTop: '2rem' }}>
           <h2 className="section-title">🎓 Teaching Tools</h2>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+            gap: '2rem', 
+            marginTop: '1rem' 
+          }}>
             {/* Whiteboard */}
             <Whiteboard socket={socket} channelName={channelName} isTeacher={true} />
             
             {/* Screen Share */}
-             <ScreenShare channelName={channelName} isTeacher={true} />
+            <ScreenShare channelName={channelName} isTeacher={true} />
           </div>
         </div>
       )}
