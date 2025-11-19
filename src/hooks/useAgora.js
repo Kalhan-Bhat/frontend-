@@ -65,6 +65,24 @@ export const useAgora = () => {
       setIsLoading(true)
       setError(null)
 
+      // Check camera/mic permissions first
+      console.log('🎥 Checking camera and microphone permissions...')
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const hasCamera = devices.some(device => device.kind === 'videoinput')
+        const hasMicrophone = devices.some(device => device.kind === 'audioinput')
+        
+        console.log('📹 Camera available:', hasCamera)
+        console.log('🎤 Microphone available:', hasMicrophone)
+        
+        if (!hasCamera || !hasMicrophone) {
+          throw new Error('Camera or microphone not found. Please check your devices.')
+        }
+      } catch (deviceErr) {
+        console.error('❌ Device check failed:', deviceErr)
+        throw new Error('Cannot access camera/microphone. Please allow permissions.')
+      }
+
       // Get token from backend
       const { token, uid, appId } = await getAgoraToken(channelName, role)
       
@@ -76,13 +94,53 @@ export const useAgora = () => {
       channelRef.current = channelName
       uidRef.current = uid
 
-      // Create local tracks
-      const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks()
+      // Create local tracks with better error handling
+      console.log('📹 Creating camera and microphone tracks...')
+      let audioTrack = null
+      let videoTrack = null
+      
+      try {
+        const tracks = await AgoraRTC.createMicrophoneAndCameraTracks(
+          {
+            // Audio config
+            encoderConfig: "music_standard",
+          },
+          {
+            // Video config
+            encoderConfig: {
+              width: 640,
+              height: 480,
+              frameRate: 15,
+              bitrateMax: 1000,
+              bitrateMin: 400,
+            }
+          }
+        )
+        audioTrack = tracks[0]
+        videoTrack = tracks[1]
+        console.log('✅ Tracks created successfully')
+      } catch (trackErr) {
+        console.error('❌ Error creating tracks:', trackErr)
+        
+        // Try to create audio-only if video fails
+        if (trackErr.message?.includes('video') || trackErr.code === 'NOT_READABLE') {
+          console.log('⚠️ Camera unavailable, trying audio-only...')
+          try {
+            audioTrack = await AgoraRTC.createMicrophoneAudioTrack()
+            console.log('✅ Audio track created (video unavailable)')
+          } catch (audioErr) {
+            throw new Error('Cannot access camera or microphone. Please check:\n1. Permissions are granted\n2. Camera is not used by another app\n3. Try refreshing the page')
+          }
+        } else {
+          throw trackErr
+        }
+      }
       
       setLocalTracks({ audio: audioTrack, video: videoTrack })
 
       // Publish local tracks
-      await clientRef.current.publish([audioTrack, videoTrack])
+      const tracksToPublish = [audioTrack, videoTrack].filter(Boolean)
+      await clientRef.current.publish(tracksToPublish)
       
       console.log('📡 Published local tracks')
       
@@ -94,6 +152,16 @@ export const useAgora = () => {
       console.error('❌ Error joining channel:', err)
       setError(err.message)
       setIsLoading(false)
+      
+      // Cleanup on error
+      if (clientRef.current && channelRef.current) {
+        try {
+          await clientRef.current.leave()
+        } catch (leaveErr) {
+          console.error('Error during cleanup:', leaveErr)
+        }
+      }
+      
       throw err
     }
   }
