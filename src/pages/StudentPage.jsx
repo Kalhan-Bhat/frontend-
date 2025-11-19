@@ -8,6 +8,8 @@ import { useAgora } from '../hooks/useAgora'
 import { useSocket } from '../hooks/useSocket'
 import VideoPlayer from '../components/VideoPlayer'
 import EmotionDisplay from '../components/EmotionDisplay'
+import Whiteboard from '../components/Whiteboard'
+import ScreenShare from '../components/ScreenShare'
 
 function StudentPage() {
   // VERIFICATION: This code is loaded
@@ -25,8 +27,8 @@ function StudentPage() {
   const [remoteUserNames, setRemoteUserNames] = useState({})
   
   // Video state
-  const { localTracks, remoteUsers, isJoined, isLoading, error, join, leave, currentUid } = useAgora()
-  const { emit, on, off } = useSocket()
+  const { localTracks, remoteUsers, isJoined, isLoading, error, join, leave, currentUid, client } = useAgora()
+  const { socket, emit, on, off } = useSocket()
   
   // Refs
   const frameIntervalRef = useRef(null)
@@ -339,6 +341,16 @@ function StudentPage() {
 
           {/* Engagement Display */}
           <EmotionDisplay engagement={currentEngagement} confidence={confidence} />
+
+          {/* Whiteboard - Students can view teacher's drawings */}
+          <div style={{ marginTop: '2rem' }}>
+            <Whiteboard socket={socket} channelName={channelName} isTeacher={false} />
+          </div>
+
+          {/* Screen Share - Students can view teacher's screen */}
+          <div style={{ marginTop: '2rem' }}>
+            <ScreenShare client={client} channelName={channelName} isTeacher={false} />
+          </div>
         </>
       )}
     </div>

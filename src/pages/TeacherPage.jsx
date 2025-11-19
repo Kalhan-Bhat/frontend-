@@ -8,6 +8,8 @@ import { useAgora } from '../hooks/useAgora'
 import { useSocket } from '../hooks/useSocket'
 import VideoPlayer from '../components/VideoPlayer'
 import Analytics from '../components/Analytics'
+import Whiteboard from '../components/Whiteboard'
+import ScreenShare from '../components/ScreenShare'
 
 function TeacherPage() {
   // Form state
@@ -19,8 +21,8 @@ function TeacherPage() {
   const [remoteUserNames, setRemoteUserNames] = useState({})
   
   // Video state
-  const { localTracks, remoteUsers, isJoined, isLoading, error, join, leave, currentUid } = useAgora()
-  const { emit, on, off } = useSocket()
+  const { localTracks, remoteUsers, isJoined, isLoading, error, join, leave, currentUid, client } = useAgora()
+  const { socket, emit, on, off } = useSocket()
 
   /**
    * Handle joining channel
@@ -337,6 +339,21 @@ function TeacherPage() {
             {isJoined && channelName && (
               <Analytics channelName={channelName} students={students} />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Teaching Tools Section - Only visible when joined */}
+      {isJoined && (
+        <div style={{ marginTop: '2rem' }}>
+          <h2 className="section-title">🎓 Teaching Tools</h2>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
+            {/* Whiteboard */}
+            <Whiteboard socket={socket} channelName={channelName} isTeacher={true} />
+            
+            {/* Screen Share */}
+            <ScreenShare client={client} channelName={channelName} isTeacher={true} />
           </div>
         </div>
       )}

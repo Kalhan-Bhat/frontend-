@@ -159,6 +159,7 @@ export const useAgora = () => {
     toggleAudio,
     toggleVideo,
     currentChannel: channelRef.current,
-    currentUid: uidRef.current
+    currentUid: uidRef.current,
+    client: clientRef.current
   }
 }
