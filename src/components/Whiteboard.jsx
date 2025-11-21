@@ -242,45 +242,87 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     const updatedPages = [...pages]
     updatedPages[currentPage] = canvas.toDataURL('image/png')
     
-    // Download each page separately with proper numbering
+    // Dynamically import jsPDF
+    const { jsPDF } = await import('jspdf')
+    
+    // Create PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    })
+    
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const margin = 15
+    const contentWidth = pageWidth - (2 * margin)
+    
+    // Add title page
+    pdf.setFontSize(24)
+    pdf.setTextColor(37, 99, 235) // Blue color
+    pdf.text('Whiteboard Notes', pageWidth / 2, 40, { align: 'center' })
+    
+    pdf.setFontSize(14)
+    pdf.setTextColor(75, 85, 99) // Gray color
+    pdf.text(`Class: ${channelName}`, pageWidth / 2, 55, { align: 'center' })
+    pdf.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth / 2, 65, { align: 'center' })
+    pdf.text(`Time: ${new Date().toLocaleTimeString()}`, pageWidth / 2, 75, { align: 'center' })
+    pdf.text(`Total Pages: ${updatedPages.length}`, pageWidth / 2, 85, { align: 'center' })
+    
+    // Add divider line
+    pdf.setDrawColor(229, 231, 235)
+    pdf.setLineWidth(0.5)
+    pdf.line(margin, 100, pageWidth - margin, 100)
+    
+    // Add pages
     for (let i = 0; i < updatedPages.length; i++) {
       const pageData = updatedPages[i]
       
-      // Create canvas for this page
-      const tempCanvas = document.createElement('canvas')
-      tempCanvas.width = canvas.width
-      tempCanvas.height = canvas.height
-      const ctx = tempCanvas.getContext('2d')
+      // Add new page for each whiteboard page (except first one which is title page)
+      pdf.addPage()
       
-      // Fill with white background
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+      // Page header
+      pdf.setFontSize(12)
+      pdf.setTextColor(107, 114, 128)
+      pdf.text(`Page ${i + 1} of ${updatedPages.length}`, pageWidth / 2, margin, { align: 'center' })
       
       if (pageData) {
-        // Load and draw the page
-        await new Promise((resolve) => {
-          const img = new Image()
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height)
-            resolve()
-          }
-          img.src = pageData
-        })
+        // Calculate dimensions to fit image in page while maintaining aspect ratio
+        const imgAspectRatio = canvas.width / canvas.height
+        const maxContentHeight = pageHeight - (3 * margin)
+        
+        let imgWidth = contentWidth
+        let imgHeight = imgWidth / imgAspectRatio
+        
+        // If height exceeds page, scale down
+        if (imgHeight > maxContentHeight) {
+          imgHeight = maxContentHeight
+          imgWidth = imgHeight * imgAspectRatio
+        }
+        
+        const xPos = (pageWidth - imgWidth) / 2
+        const yPos = margin + 10
+        
+        // Add image to PDF
+        pdf.addImage(pageData, 'PNG', xPos, yPos, imgWidth, imgHeight, `page-${i}`, 'FAST')
+      } else {
+        // Empty page indicator
+        pdf.setFontSize(14)
+        pdf.setTextColor(156, 163, 175)
+        pdf.text('(Blank Page)', pageWidth / 2, pageHeight / 2, { align: 'center' })
       }
       
-      // Download this page
-      const link = document.createElement('a')
-      link.download = `whiteboard-${channelName}-page-${i + 1}-of-${updatedPages.length}.png`
-      link.href = tempCanvas.toDataURL('image/png', 1.0)
-      link.click()
-      
-      // Small delay between downloads to prevent browser blocking
-      if (i < updatedPages.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300))
-      }
+      // Page footer
+      pdf.setFontSize(10)
+      pdf.setTextColor(156, 163, 175)
+      pdf.text(`Generated on ${new Date().toLocaleString()}`, pageWidth / 2, pageHeight - 10, { align: 'center' })
     }
     
-    alert(`✅ Downloaded ${updatedPages.length} page(s) successfully!`)
+    // Download PDF
+    const fileName = `${channelName}-notes-${new Date().toISOString().split('T')[0]}.pdf`
+    pdf.save(fileName)
+    
+    alert(`✅ Downloaded PDF with ${updatedPages.length} page(s)!`)
   }
 
   const toggleFullscreen = async () => {
