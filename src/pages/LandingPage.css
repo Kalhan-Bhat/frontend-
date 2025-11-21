@@ -691,6 +691,15 @@
   font-size: 0.875rem;
 }
 
+.success-message {
+  background: #d1fae5;
+  color: #065f46;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .auth-submit {
   padding: 1rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

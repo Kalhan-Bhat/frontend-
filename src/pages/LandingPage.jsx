@@ -28,12 +28,26 @@ function LandingPage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
   useEffect(() => {
-    // Simulate visitor count update
-    const interval = setInterval(() => {
-      setVisitors(prev => prev + Math.floor(Math.random() * 3))
-    }, 10000)
+    // Fetch initial visitor count from backend
+    const fetchVisitorCount = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://backend-node-production-59a3.up.railway.app'
+        const response = await fetch(`${backendUrl}/api/visitors`)
+        const data = await response.json()
+        setVisitors(data.count || 1000)
+      } catch (err) {
+        console.error('Failed to fetch visitor count:', err)
+        setVisitors(1000)
+      }
+    }
+
+    fetchVisitorCount()
+
+    // Update visitor count every 10 seconds
+    const interval = setInterval(fetchVisitorCount, 10000)
 
     return () => clearInterval(interval)
   }, [])
@@ -49,6 +63,7 @@ function LandingPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setSuccessMessage('')
 
     try {
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup'
@@ -68,16 +83,24 @@ function LandingPage() {
       const data = await response.json()
 
       if (response.ok) {
+        // Show success message
+        const message = authMode === 'login' 
+          ? `✅ Login successful! Welcome back, ${data.user.name}!`
+          : `✅ Registration successful! Welcome, ${data.user.name}!`
+        setSuccessMessage(message)
+        
         // Store user data in localStorage
         localStorage.setItem('user', JSON.stringify(data.user))
         localStorage.setItem('token', data.token)
         
-        // Navigate to appropriate portal
-        if (role === 'student') {
-          navigate('/student')
-        } else {
-          navigate('/teacher')
-        }
+        // Navigate to appropriate portal after short delay
+        setTimeout(() => {
+          if (role === 'student') {
+            navigate('/student')
+          } else {
+            navigate('/teacher')
+          }
+        }, 1500)
       } else {
         // Show user-friendly message for unavailable auth
         if (data.available === false) {
@@ -454,6 +477,7 @@ function LandingPage() {
               )}
 
               {error && <div className="error-message">{error}</div>}
+              {successMessage && <div className="success-message">{successMessage}</div>}
 
               <button type="submit" className="auth-submit" disabled={loading}>
                 {loading ? 'Please wait...' : (authMode === 'login' ? 'Login' : 'Sign Up')}
