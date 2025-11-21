@@ -190,43 +190,58 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     const newPages = [...pages]
     newPages[currentPage] = imageData
     setPages(newPages)
+    return imageData // Return the saved data
   }
 
   const addNewPage = () => {
     if (!isTeacher) return
     
-    // Save current page before adding new one
-    saveCurrentPage()
+    const canvas = canvasRef.current
+    if (!canvas) return
+    
+    // Save current page data immediately
+    const currentPageData = canvas.toDataURL('image/png')
+    const newPages = [...pages]
+    newPages[currentPage] = currentPageData
     
     // Add new blank page
-    setPages([...pages, null])
-    setCurrentPage(pages.length)
+    newPages.push(null)
+    setPages(newPages)
+    
+    // Switch to new page
+    setCurrentPage(newPages.length - 1)
     
     // Clear canvas for new page
     clearCanvas()
     
     if (socket) {
-      socket.emit('whiteboard:newPage', { channelName, pageCount: pages.length + 1 })
+      socket.emit('whiteboard:newPage', { channelName, pageCount: newPages.length })
     }
   }
 
   const goToPage = (pageIndex) => {
-    // Save current page before switching
-    saveCurrentPage()
+    const canvas = canvasRef.current
+    if (!canvas) return
     
+    // Save current page data immediately before switching
+    const currentPageData = canvas.toDataURL('image/png')
+    const newPages = [...pages]
+    newPages[currentPage] = currentPageData
+    setPages(newPages)
+    
+    // Switch to new page
     setCurrentPage(pageIndex)
     
     // Load the selected page
-    const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     clearCanvas()
     
-    if (pages[pageIndex]) {
+    if (newPages[pageIndex]) {
       const img = new Image()
       img.onload = () => {
         ctx.drawImage(img, 0, 0)
       }
-      img.src = pages[pageIndex]
+      img.src = newPages[pageIndex]
     }
     
     if (socket) {
