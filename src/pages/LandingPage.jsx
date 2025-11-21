@@ -51,10 +51,10 @@ function LandingPage() {
     setError('')
 
     try {
-      // TODO: Replace with your backend API endpoint
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup'
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://backend-node-production-59a3.up.railway.app'
       
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'}${endpoint}`, {
+      const response = await fetch(`${backendUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -79,11 +79,16 @@ function LandingPage() {
           navigate('/teacher')
         }
       } else {
-        setError(data.message || 'Authentication failed')
+        // Show user-friendly message for unavailable auth
+        if (data.available === false) {
+          setError('Authentication is temporarily unavailable. Please use demo access below.')
+        } else {
+          setError(data.message || 'Authentication failed')
+        }
       }
     } catch (err) {
       console.error('Auth error:', err)
-      setError('Connection error. Please try again.')
+      setError('Authentication service is unavailable. Please use demo access below.')
     } finally {
       setLoading(false)
     }
