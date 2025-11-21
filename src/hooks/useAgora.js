@@ -22,32 +22,35 @@ export const useAgora = () => {
    * Initialize Agora client
    */
   useEffect(() => {
-    // Create Agora client
-    clientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+    // Only create if doesn't exist
+    if (!clientRef.current) {
+      // Create Agora client
+      clientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
 
-    // Set up event listeners
-    clientRef.current.on('user-published', async (user, mediaType) => {
-      await clientRef.current.subscribe(user, mediaType)
-      console.log('User published:', user.uid, mediaType)
+      // Set up event listeners
+      clientRef.current.on('user-published', async (user, mediaType) => {
+        await clientRef.current.subscribe(user, mediaType)
+        console.log('User published:', user.uid, mediaType)
 
-      setRemoteUsers((prev) => ({
-        ...prev,
-        [user.uid]: user
-      }))
-    })
-
-    clientRef.current.on('user-unpublished', (user, mediaType) => {
-      console.log('User unpublished:', user.uid, mediaType)
-    })
-
-    clientRef.current.on('user-left', (user) => {
-      console.log('User left:', user.uid)
-      setRemoteUsers((prev) => {
-        const updated = { ...prev }
-        delete updated[user.uid]
-        return updated
+        setRemoteUsers((prev) => ({
+          ...prev,
+          [user.uid]: user
+        }))
       })
-    })
+
+      clientRef.current.on('user-unpublished', (user, mediaType) => {
+        console.log('User unpublished:', user.uid, mediaType)
+      })
+
+      clientRef.current.on('user-left', (user) => {
+        console.log('User left:', user.uid)
+        setRemoteUsers((prev) => {
+          const updated = { ...prev }
+          delete updated[user.uid]
+          return updated
+        })
+      })
+    }
 
     return () => {
       // Cleanup on unmount
@@ -62,6 +65,12 @@ export const useAgora = () => {
    */
   const join = async (channelName, role = 'student') => {
     try {
+      // Check if already joined
+      if (isJoined || channelRef.current) {
+        console.warn('⚠️ Already joined a channel. Please leave first.')
+        throw new Error('Already in a channel. Please leave first.')
+      }
+
       setIsLoading(true)
       setError(null)
 
@@ -86,6 +95,11 @@ export const useAgora = () => {
       // Get token from backend
       const { token, uid, appId } = await getAgoraToken(channelName, role)
       
+      // Check if client exists
+      if (!clientRef.current) {
+        throw new Error('Agora client not initialized')
+      }
+
       // Join channel
       await clientRef.current.join(appId, channelName, token, uid)
       
@@ -100,6 +114,7 @@ export const useAgora = () => {
       let videoTrack = null
       
       try {
+        // Try to create both audio and video
         const tracks = await AgoraRTC.createMicrophoneAndCameraTracks(
           {
             // Audio config
@@ -118,31 +133,55 @@ export const useAgora = () => {
         )
         audioTrack = tracks[0]
         videoTrack = tracks[1]
-        console.log('✅ Tracks created successfully')
+        console.log('✅ Both audio and video tracks created successfully')
       } catch (trackErr) {
         console.error('❌ Error creating tracks:', trackErr)
+        console.log('⚠️ Camera is blocked or in use. Trying alternatives...')
         
-        // Try to create audio-only if video fails
-        if (trackErr.message?.includes('video') || trackErr.code === 'NOT_READABLE') {
-          console.log('⚠️ Camera unavailable, trying audio-only...')
+        // Try creating tracks separately - audio first, then video
+        try {
+          // Try audio first
+          console.log('🎤 Trying to create audio track...')
+          audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+            encoderConfig: "music_standard"
+          })
+          console.log('✅ Audio track created')
+          
+          // Then try video separately
           try {
-            audioTrack = await AgoraRTC.createMicrophoneAudioTrack()
-            console.log('✅ Audio track created (video unavailable)')
-          } catch (audioErr) {
-            throw new Error('Cannot access camera or microphone. Please check:\n1. Permissions are granted\n2. Camera is not used by another app\n3. Try refreshing the page')
+            console.log('📹 Trying to create video track separately...')
+            videoTrack = await AgoraRTC.createCameraVideoTrack({
+              encoderConfig: {
+                width: 640,
+                height: 480,
+                frameRate: 15,
+                bitrateMax: 1000,
+                bitrateMin: 400,
+              }
+            })
+            console.log('✅ Video track created')
+          } catch (videoErr) {
+            console.warn('⚠️ Camera unavailable, continuing with audio-only')
+            alert('⚠️ Camera not available. Joining with audio only.\n\nPossible reasons:\n- Camera is used by another app\n- Camera permissions not granted\n- Try closing other video apps')
+            videoTrack = null
           }
-        } else {
-          throw trackErr
+        } catch (audioErr) {
+          console.error('❌ Cannot access microphone either:', audioErr)
+          throw new Error('Cannot access microphone or camera.\n\nPlease:\n1. Allow microphone/camera permissions\n2. Close other apps using camera (Zoom, Teams, etc.)\n3. Refresh the page and try again')
         }
       }
       
       setLocalTracks({ audio: audioTrack, video: videoTrack })
 
-      // Publish local tracks
+      // Publish local tracks (only those that exist)
       const tracksToPublish = [audioTrack, videoTrack].filter(Boolean)
-      await clientRef.current.publish(tracksToPublish)
-      
-      console.log('📡 Published local tracks')
+      if (tracksToPublish.length > 0) {
+        await clientRef.current.publish(tracksToPublish)
+        console.log(`📡 Published ${tracksToPublish.length} track(s):`, 
+          tracksToPublish.map(t => t.trackMediaType).join(', '))
+      } else {
+        console.warn('⚠️ No tracks to publish')
+      }
       
       setIsJoined(true)
       setIsLoading(false)
