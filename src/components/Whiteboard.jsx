@@ -241,10 +241,13 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       return
     }
     
-    // Build updated pages array with current canvas state
-    const updatedPages = [...pages]
+    // First, save the current page to the pages array
     const currentCanvasData = canvas.toDataURL('image/png', 1.0)
+    const updatedPages = [...pages]
     updatedPages[currentPage] = currentCanvasData
+    
+    // Update the pages state so all pages are saved
+    setPages(updatedPages)
     
     // Create PDF
     const pdf = new jsPDF({
