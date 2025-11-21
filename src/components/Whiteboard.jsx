@@ -14,6 +14,8 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   const [brushSize, setBrushSize] = useState(3)
   const [tool, setTool] = useState('pen') // pen, eraser
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [pages, setPages] = useState([null]) // Array of page canvases (null = blank page)
+  const [currentPage, setCurrentPage] = useState(0)
   
   useEffect(() => {
     const canvas = canvasRef.current
@@ -54,8 +56,20 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       })
 
       socket.on('whiteboard:clear', (data) => {
-        if (data.channelName === channelName) {
+        if (data.channelName === channelName && data.page === currentPage) {
           clearCanvas()
+        }
+      })
+
+      socket.on('whiteboard:newPage', (data) => {
+        if (data.channelName === channelName) {
+          setPages(prev => [...prev, null])
+        }
+      })
+
+      socket.on('whiteboard:changePage', (data) => {
+        if (data.channelName === channelName) {
+          goToPage(data.page)
         }
       })
     }
@@ -65,9 +79,11 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       if (socket) {
         socket.off('whiteboard:draw')
         socket.off('whiteboard:clear')
+        socket.off('whiteboard:newPage')
+        socket.off('whiteboard:changePage')
       }
     }
-  }, [socket, channelName, isFullscreen])
+  }, [socket, channelName, isFullscreen, currentPage])
 
   const drawLine = (ctx, x0, y0, x1, y1, color, brushSize, tool) => {
     ctx.beginPath()
@@ -158,8 +174,107 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     clearCanvas()
     
     if (socket) {
-      socket.emit('whiteboard:clear', { channelName })
+      socket.emit('whiteboard:clear', { channelName, page: currentPage })
     }
+  }
+
+  const saveCurrentPage = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    
+    // Save current page as image data
+    const imageData = canvas.toDataURL('image/png')
+    const newPages = [...pages]
+    newPages[currentPage] = imageData
+    setPages(newPages)
+  }
+
+  const addNewPage = () => {
+    if (!isTeacher) return
+    
+    // Save current page before adding new one
+    saveCurrentPage()
+    
+    // Add new blank page
+    setPages([...pages, null])
+    setCurrentPage(pages.length)
+    
+    // Clear canvas for new page
+    clearCanvas()
+    
+    if (socket) {
+      socket.emit('whiteboard:newPage', { channelName, pageCount: pages.length + 1 })
+    }
+  }
+
+  const goToPage = (pageIndex) => {
+    // Save current page before switching
+    saveCurrentPage()
+    
+    setCurrentPage(pageIndex)
+    
+    // Load the selected page
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    clearCanvas()
+    
+    if (pages[pageIndex]) {
+      const img = new Image()
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0)
+      }
+      img.src = pages[pageIndex]
+    }
+    
+    if (socket) {
+      socket.emit('whiteboard:changePage', { channelName, page: pageIndex })
+    }
+  }
+
+  const downloadNotes = () => {
+    // Save current page first
+    saveCurrentPage()
+    
+    // Create a temporary canvas to combine all pages
+    const tempCanvas = document.createElement('canvas')
+    const canvas = canvasRef.current
+    tempCanvas.width = canvas.width
+    tempCanvas.height = canvas.height * pages.length
+    const ctx = tempCanvas.getContext('2d')
+    
+    // Fill with white background
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+    
+    // Draw all pages
+    let loadedPages = 0
+    const pagesToLoad = pages.map((pageData, index) => {
+      return new Promise((resolve) => {
+        if (pageData) {
+          const img = new Image()
+          img.onload = () => {
+            ctx.drawImage(img, 0, canvas.height * index)
+            resolve()
+          }
+          img.src = pageData
+        } else if (index === currentPage) {
+          // Current page (not yet saved)
+          ctx.drawImage(canvas, 0, canvas.height * index)
+          resolve()
+        } else {
+          // Blank page
+          resolve()
+        }
+      })
+    })
+    
+    Promise.all(pagesToLoad).then(() => {
+      // Download the combined image
+      const link = document.createElement('a')
+      link.download = `whiteboard-notes-${channelName}-${Date.now()}.png`
+      link.href = tempCanvas.toDataURL('image/png')
+      link.click()
+    })
   }
 
   const toggleFullscreen = async () => {
@@ -235,7 +350,24 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, flex: '1 1 auto', marginBottom: '0.5rem' }}>📝 Whiteboard {isFullscreen && '(Fullscreen Mode)'}</h3>
+        <h3 style={{ margin: 0, flex: '1 1 auto', marginBottom: '0.5rem' }}>
+          📝 Whiteboard - Page {currentPage + 1}/{pages.length} {isFullscreen && '(Fullscreen)'}
+        </h3>
+        
+        <button
+          onClick={downloadNotes}
+          style={{
+            padding: '0.5rem 0.75rem',
+            background: '#10b981',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.875rem'
+          }}
+        >
+          📥 Download Notes
+        </button>
         
         <button
           onClick={toggleFullscreen}
@@ -249,7 +381,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
             fontSize: '0.875rem'
           }}
         >
-          {isFullscreen ? '🔙 Exit Fullscreen' : '⛶ Fullscreen'}
+          {isFullscreen ? '🔙 Exit' : '⛶ Fullscreen'}
         </button>
         
         {isTeacher && (
@@ -316,7 +448,22 @@ function Whiteboard({ socket, channelName, isTeacher }) {
                   fontSize: '0.875rem'
                 }}
               >
-                🗑️ Clear
+                🗑️ Clear Page
+              </button>
+
+              <button
+                onClick={addNewPage}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  background: '#8b5cf6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                ➕ New Page
               </button>
             </div>
           </>
@@ -328,6 +475,62 @@ function Whiteboard({ socket, channelName, isTeacher }) {
           </p>
         )}
       </div>
+
+      {/* Page Navigation */}
+      {pages.length > 1 && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => goToPage(Math.max(0, currentPage - 1))}
+            disabled={currentPage === 0}
+            style={{
+              padding: '0.5rem 0.75rem',
+              background: currentPage === 0 ? '#d1d5db' : '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
+              fontSize: '0.875rem'
+            }}
+          >
+            ◀ Previous
+          </button>
+          
+          {pages.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => goToPage(index)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: index === currentPage ? '#3b82f6' : '#e5e7eb',
+                color: index === currentPage ? '#fff' : '#000',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                minWidth: '40px'
+              }}
+            >
+              {index + 1}
+            </button>
+          ))}
+          
+          <button
+            onClick={() => goToPage(Math.min(pages.length - 1, currentPage + 1))}
+            disabled={currentPage === pages.length - 1}
+            style={{
+              padding: '0.5rem 0.75rem',
+              background: currentPage === pages.length - 1 ? '#d1d5db' : '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: currentPage === pages.length - 1 ? 'not-allowed' : 'pointer',
+              fontSize: '0.875rem'
+            }}
+          >
+            Next ▶
+          </button>
+        </div>
+      )}
 
       <div 
         ref={containerRef}

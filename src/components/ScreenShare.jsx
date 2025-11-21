@@ -13,8 +13,10 @@ function ScreenShare({ channelName,isTeacher }) {
   const [screenTrack, setScreenTrack] = useState(null)
   const [remoteScreenTrack, setRemoteScreenTrack] = useState(null)
   const [error, setError] = useState(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const screenPlayerRef = useRef(null)
   const screenClientRef = useRef(null)
+  const containerRef = useRef(null)
 
   // Initialize separate screen share client for receiving (students only)
   useEffect(() => {
@@ -198,12 +200,99 @@ function ScreenShare({ channelName,isTeacher }) {
     }
   }
 
+  const toggleFullscreen = async () => {
+    const element = containerRef.current
+    
+    if (!isFullscreen) {
+      // Enter fullscreen
+      try {
+        if (element.requestFullscreen) {
+          await element.requestFullscreen()
+        } else if (element.webkitRequestFullscreen) {
+          await element.webkitRequestFullscreen()
+        } else if (element.msRequestFullscreen) {
+          await element.msRequestFullscreen()
+        }
+      } catch (err) {
+        console.error('❌ Fullscreen error:', err)
+      }
+    } else {
+      // Exit fullscreen
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen()
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen()
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen()
+        }
+      } catch (err) {
+        console.error('❌ Exit fullscreen error:', err)
+      }
+    }
+  }
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      )
+      setIsFullscreen(isCurrentlyFullscreen)
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    document.addEventListener('msfullscreenchange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
   return (
-    <div style={{ background: '#fff', borderRadius: '8px', padding: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h3 style={{ margin: 0 }}>🖥️ Screen Share</h3>
+    <div 
+      ref={containerRef}
+      style={{ 
+        background: isFullscreen ? '#000' : '#fff', 
+        borderRadius: isFullscreen ? '0' : '8px', 
+        padding: '1rem', 
+        boxShadow: isFullscreen ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
+        position: isFullscreen ? 'fixed' : 'relative',
+        top: isFullscreen ? '0' : 'auto',
+        left: isFullscreen ? '0' : 'auto',
+        width: isFullscreen ? '100vw' : 'auto',
+        height: isFullscreen ? '100vh' : 'auto',
+        zIndex: isFullscreen ? '9999' : 'auto',
+        overflow: isFullscreen ? 'hidden' : 'visible'
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <h3 style={{ margin: 0, color: isFullscreen ? '#fff' : '#000' }}>🖥️ Screen Share {isFullscreen && '(Fullscreen)'}</h3>
         
-        {isTeacher && (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {remoteScreenTrack && (
+            <button
+              onClick={toggleFullscreen}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#6b7280',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              {isFullscreen ? '🔙 Exit Fullscreen' : '⛶ Fullscreen'}
+            </button>
+          )}
+        
+          {isTeacher && (
           <button
             onClick={isSharing ? stopScreenShare : startScreenShare}
             style={{
@@ -219,6 +308,7 @@ function ScreenShare({ channelName,isTeacher }) {
             {isSharing ? '🛑 Stop Sharing' : '🖥️ Share Screen'}
           </button>
         )}
+        </div>
       </div>
 
       {error && (
@@ -236,20 +326,22 @@ function ScreenShare({ channelName,isTeacher }) {
       )}
 
       {remoteScreenTrack && !isTeacher && (
-        <div style={{ marginTop: '1rem' }}>
+        <div style={{ marginTop: isFullscreen ? '0' : '1rem', flex: isFullscreen ? '1' : 'none', display: 'flex', flexDirection: 'column' }}>
           <div
             ref={screenPlayerRef}
             style={{
               width: '100%',
-              height: '500px',
+              height: isFullscreen ? 'calc(100vh - 80px)' : '500px',
               background: '#000',
-              borderRadius: '4px',
+              borderRadius: isFullscreen ? '0' : '4px',
               overflow: 'hidden'
             }}
           />
-          <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#6b7280', textAlign: 'center' }}>
-            📺 Teacher is sharing their screen
-          </p>
+          {!isFullscreen && (
+            <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#6b7280', textAlign: 'center' }}>
+              📺 Teacher is sharing their screen
+            </p>
+          )}
         </div>
       )}
 
