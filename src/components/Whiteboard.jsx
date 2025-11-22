@@ -71,7 +71,8 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       })
 
       socket.on('whiteboard:changePage', (data) => {
-        if (data.channelName === channelName) {
+        if (data.channelName === channelName && isTeacher) {
+          // Only teachers can change pages
           goToPage(data.page)
         }
       })
@@ -602,8 +603,8 @@ function Whiteboard({ socket, channelName, isTeacher }) {
         )}
       </div>
 
-      {/* Page Navigation */}
-      {pages.length > 1 && (
+      {/* Page Navigation - Only for Teachers */}
+      {isTeacher && pages.length > 1 && (
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => goToPage(Math.max(0, currentPage - 1))}
@@ -655,6 +656,15 @@ function Whiteboard({ socket, channelName, isTeacher }) {
           >
             Next ▶
           </button>
+        </div>
+      )}
+      
+      {/* Page indicator for students - view only */}
+      {!isTeacher && pages.length > 1 && (
+        <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#f3f4f6', borderRadius: '4px', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            📄 Viewing Page {currentPage + 1} of {pages.length}
+          </span>
         </div>
       )}
 
