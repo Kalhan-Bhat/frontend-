@@ -19,6 +19,8 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   const [currentPage, setCurrentPage] = useState(0)
   const [lastDrawTime, setLastDrawTime] = useState(0)
   
+  const DRAW_THROTTLE = 16 // ~60fps limit
+  
   useEffect(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -212,9 +214,6 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     canvas._lastX = x
     canvas._lastY = y
   }
-
-  const [lastDrawTime, setLastDrawTime] = useState(0)
-  const DRAW_THROTTLE = 16 // ~60fps limit
 
   const draw = (e) => {
     if (!isDrawing || !isTeacher) return
