@@ -17,6 +17,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [pages, setPages] = useState([null]) // Array of page canvases (null = blank page)
   const [currentPage, setCurrentPage] = useState(0)
+  const [lastDrawTime, setLastDrawTime] = useState(0)
   
   useEffect(() => {
     const canvas = canvasRef.current
@@ -33,18 +34,41 @@ function Whiteboard({ socket, channelName, isTeacher }) {
         ? Math.max(window.innerHeight - 140, 600)  // Fit to screen in fullscreen
         : 2000  // Scrollable notebook height in normal mode
       
-      // Save current canvas content
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      // Only resize if dimensions actually changed to avoid unnecessary redraws
+      if (canvas.width === width && canvas.height === height) {
+        return
+      }
       
+      // Save current canvas content as image data URL
+      let imageDataUrl = null
+      if (canvas.width > 0 && canvas.height > 0) {
+        try {
+          imageDataUrl = canvas.toDataURL('image/png')
+        } catch (err) {
+          console.log('📷 Canvas content save skipped:', err.message)
+        }
+      }
+      
+      // Update canvas dimensions
       canvas.width = width
       canvas.height = height
-      
-      // Restore canvas content after resize
-      ctx.putImageData(imageData, 0, 0)
       
       // Reset context properties
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
+      
+      // Restore canvas content from image if we had content
+      if (imageDataUrl && imageDataUrl !== 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==') {
+        const img = new Image()
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0)
+          console.log('✅ Canvas content restored after resize')
+        }
+        img.onerror = () => {
+          console.log('❌ Failed to restore canvas content after resize')
+        }
+        img.src = imageDataUrl
+      }
     }
     
     resizeCanvas()
@@ -98,19 +122,18 @@ function Whiteboard({ socket, channelName, isTeacher }) {
           console.log('✅ Changing to page:', pageIndex)
           
           // Update pages array if provided (from teacher)
+          let pagesToUse = pages
           if (data.pagesData) {
             console.log('📚 Updating pages array from teacher, length:', data.pagesData.length)
             setPages(data.pagesData)
+            pagesToUse = data.pagesData
           }
           
-          // Switch to the new page
+          // Switch to the new page immediately
           setCurrentPage(pageIndex)
           console.log('🔄 Switched to page:', pageIndex)
           
-          // Use updated pages array or current one
-          const pagesToUse = data.pagesData || pages
-          
-          // Clear and load the new page
+          // Clear and load the new page with improved timing
           const ctx = canvas.getContext('2d')
           ctx.clearRect(0, 0, canvas.width, canvas.height)
           console.log('🧹 Canvas cleared for page:', pageIndex)
@@ -120,8 +143,11 @@ function Whiteboard({ socket, channelName, isTeacher }) {
             console.log('📥 Loading page content for page:', pageIndex)
             const img = new Image()
             img.onload = () => {
-              ctx.drawImage(img, 0, 0)
-              console.log('✅ Page content loaded for page:', pageIndex)
+              // Use requestAnimationFrame for smooth rendering
+              requestAnimationFrame(() => {
+                ctx.drawImage(img, 0, 0)
+                console.log('✅ Page content loaded for page:', pageIndex)
+              })
             }
             img.onerror = () => {
               console.error('❌ Failed to load page:', pageIndex)
@@ -187,10 +213,19 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     canvas._lastY = y
   }
 
+  const [lastDrawTime, setLastDrawTime] = useState(0)
+  const DRAW_THROTTLE = 16 // ~60fps limit
+
   const draw = (e) => {
     if (!isDrawing || !isTeacher) return
 
     e.preventDefault() // Prevent scrolling while drawing
+    
+    const now = Date.now()
+    if (now - lastDrawTime < DRAW_THROTTLE) {
+      return // Throttle drawing for performance
+    }
+    setLastDrawTime(now)
     
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
@@ -199,7 +234,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     // Draw locally
     drawLine(ctx, canvas._lastX, canvas._lastY, x, y, color, brushSize, tool)
 
-    // Emit to others
+    // Emit to others with throttling
     if (socket) {
       socket.emit('whiteboard:draw', {
         channelName,
@@ -289,7 +324,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     
     console.log('🎯 goToPage called:', pageIndex, 'isTeacher:', isTeacher, 'currentPage:', currentPage)
     
-    // Prevent rapid toggling - add small delay
+    // Prevent rapid toggling - debounce page changes
     if (pageIndex === currentPage) {
       console.log('⏭️ Already on page', pageIndex, '- skipping')
       return
@@ -297,29 +332,45 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     
     let updatedPages = [...pages]
     
-    // Save current page data immediately before switching (teacher only)
-    if (isTeacher) {
-      const currentPageData = canvas.toDataURL('image/png')
-      updatedPages[currentPage] = currentPageData
-      setPages(updatedPages)
-      console.log('💾 Teacher saved page:', currentPage)
+    // Save current page data immediately before switching
+    const ctx = canvas.getContext('2d')
+    if (ctx && canvas.width > 0 && canvas.height > 0) {
+      try {
+        const currentPageData = canvas.toDataURL('image/png')
+        updatedPages[currentPage] = currentPageData
+        setPages(updatedPages)
+        if (isTeacher) {
+          console.log('💾 Teacher saved page:', currentPage)
+        } else {
+          console.log('💾 Student saved page:', currentPage)
+        }
+      } catch (err) {
+        console.log('📷 Page save skipped:', err.message)
+      }
     }
     
     // Switch to new page
     setCurrentPage(pageIndex)
     console.log('🔄 Local page changed to:', pageIndex)
     
-    // Load the selected page
-    const ctx = canvas.getContext('2d')
-    clearCanvas()
+    // Clear canvas immediately
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
     
+    // Load the selected page with improved performance
     if (updatedPages[pageIndex]) {
       console.log('📥 Loading content for page:', pageIndex)
       const img = new Image()
       img.onload = () => {
-        ctx.drawImage(img, 0, 0)
-        console.log('✅ Content loaded for page:', pageIndex)
+        // Double-check we're still on the right page (prevent race conditions)
+        if (currentPage === pageIndex) {
+          ctx.drawImage(img, 0, 0)
+          console.log('✅ Content loaded for page:', pageIndex)
+        }
       }
+      img.onerror = () => {
+        console.error('❌ Failed to load page:', pageIndex)
+      }
+      // Set source last to trigger load
       img.src = updatedPages[pageIndex]
     } else {
       console.log('📝 Page', pageIndex, 'is blank')
