@@ -54,6 +54,7 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     if (socket) {
       socket.on('whiteboard:draw', (data) => {
         if (data.channelName === channelName) {
+          console.log('✏️ Received draw on current page:', currentPage)
           drawLine(ctx, data.x0, data.y0, data.x1, data.y1, data.color, data.brushSize, data.tool)
         }
       })
@@ -65,25 +66,32 @@ function Whiteboard({ socket, channelName, isTeacher }) {
       })
 
       socket.on('whiteboard:newPage', (data) => {
+        console.log('➕ Received new page event:', data)
         if (data.channelName === channelName) {
           // Add new page and switch to it
           setPages(prev => {
             const newPages = [...prev, null]
+            console.log('📚 Pages updated, total pages:', newPages.length)
             return newPages
           })
-          setCurrentPage(data.pageIndex || pages.length)
+          const newPageIndex = data.pageIndex || pages.length
+          setCurrentPage(newPageIndex)
+          console.log('🔄 Switched to new page:', newPageIndex)
           
           // Clear canvas for new page
           const ctx = canvas.getContext('2d')
           ctx.clearRect(0, 0, canvas.width, canvas.height)
+          console.log('🧹 Canvas cleared for new page')
         }
       })
 
       socket.on('whiteboard:changePage', (data) => {
+        console.log('📄 Received page change:', data, 'Current page:', currentPage, 'isTeacher:', isTeacher)
         if (data.channelName === channelName) {
           // Both teacher and students follow page changes
           // This ensures everyone sees the same page
           const pageIndex = data.page
+          console.log('✅ Changing to page:', pageIndex)
           
           // Save current page before switching (teacher only)
           if (isTeacher) {
@@ -91,22 +99,32 @@ function Whiteboard({ socket, channelName, isTeacher }) {
             const newPages = [...pages]
             newPages[currentPage] = currentPageData
             setPages(newPages)
+            console.log('💾 Teacher saved current page:', currentPage)
           }
           
           // Switch to the new page
           setCurrentPage(pageIndex)
+          console.log('🔄 Switched to page:', pageIndex)
           
           // Clear and load the new page
           const ctx = canvas.getContext('2d')
           ctx.clearRect(0, 0, canvas.width, canvas.height)
+          console.log('🧹 Canvas cleared for page:', pageIndex)
           
           // Load page content if it exists
           if (pages[pageIndex]) {
+            console.log('📥 Loading page content for page:', pageIndex)
             const img = new Image()
             img.onload = () => {
               ctx.drawImage(img, 0, 0)
+              console.log('✅ Page content loaded for page:', pageIndex)
+            }
+            img.onerror = () => {
+              console.error('❌ Failed to load page:', pageIndex)
             }
             img.src = pages[pageIndex]
+          } else {
+            console.log('📝 Page', pageIndex, 'is blank')
           }
         }
       })
@@ -263,31 +281,40 @@ function Whiteboard({ socket, channelName, isTeacher }) {
     const canvas = canvasRef.current
     if (!canvas) return
     
+    console.log('🎯 goToPage called:', pageIndex, 'isTeacher:', isTeacher)
+    
     // Save current page data immediately before switching (teacher only)
     if (isTeacher) {
       const currentPageData = canvas.toDataURL('image/png')
       const newPages = [...pages]
       newPages[currentPage] = currentPageData
       setPages(newPages)
+      console.log('💾 Teacher saved page:', currentPage)
     }
     
     // Switch to new page
     setCurrentPage(pageIndex)
+    console.log('🔄 Local page changed to:', pageIndex)
     
     // Load the selected page
     const ctx = canvas.getContext('2d')
     clearCanvas()
     
     if (pages[pageIndex]) {
+      console.log('📥 Loading content for page:', pageIndex)
       const img = new Image()
       img.onload = () => {
         ctx.drawImage(img, 0, 0)
+        console.log('✅ Content loaded for page:', pageIndex)
       }
       img.src = pages[pageIndex]
+    } else {
+      console.log('📝 Page', pageIndex, 'is blank')
     }
     
     // Only teacher emits page change
     if (socket && isTeacher) {
+      console.log('📡 Teacher emitting page change to:', pageIndex)
       socket.emit('whiteboard:changePage', { channelName, page: pageIndex })
     }
   }
@@ -645,8 +672,8 @@ function Whiteboard({ socket, channelName, isTeacher }) {
         )}
       </div>
 
-      {/* Page Navigation - Only for Teachers */}
-      {isTeacher && pages.length > 1 && (
+      {/* Page Navigation - For Both Teachers and Students */}
+      {pages.length > 1 && (
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => goToPage(Math.max(0, currentPage - 1))}
@@ -698,15 +725,12 @@ function Whiteboard({ socket, channelName, isTeacher }) {
           >
             Next ▶
           </button>
-        </div>
-      )}
-      
-      {/* Page indicator for students - view only */}
-      {!isTeacher && pages.length > 1 && (
-        <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#f3f4f6', borderRadius: '4px', textAlign: 'center' }}>
-          <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            📄 Viewing Page {currentPage + 1} of {pages.length}
-          </span>
+          
+          {!isTeacher && (
+            <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '0.5rem' }}>
+              (View Only)
+            </span>
+          )}
         </div>
       )}
 
